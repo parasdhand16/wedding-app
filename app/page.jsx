@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "./lib/supabase";
 
 const EVENTS = ["Wedding", "Engagement", "Moga", "Path"];
+
 const EVENT_COLORS = {
   Wedding: "#6b8f71",
   Engagement: "#c4917b",
@@ -52,7 +53,6 @@ function guestToRow(member, guest) {
   return {
     id: guest.id,
     family_member_id: member.id,
-    family_member: member.name,
     guest_name: guest.name,
     adults: guest.adults,
     children: guest.children,
@@ -126,7 +126,7 @@ function Donut({ value, total, size = 110, strokeW = 12, colors, label, centerLa
             fontSize: size * 0.24,
             fontWeight: 700,
             fill: colors.text,
-            fontFamily: "'Playfair Display',serif",
+            fontFamily: "'Playfair Display', serif",
           }}
         >
           {value}
@@ -140,7 +140,7 @@ function Donut({ value, total, size = 110, strokeW = 12, colors, label, centerLa
             style={{
               fontSize: 8,
               fill: "#a09585",
-              fontFamily: "'DM Sans',sans-serif",
+              fontFamily: "'DM Sans', sans-serif",
               letterSpacing: 1.5,
               textTransform: "uppercase",
             }}
@@ -157,7 +157,7 @@ function Donut({ value, total, size = 110, strokeW = 12, colors, label, centerLa
             letterSpacing: 1.2,
             textTransform: "uppercase",
             fontWeight: 600,
-            fontFamily: "'DM Sans',sans-serif",
+            fontFamily: "'DM Sans', sans-serif",
           }}
         >
           {label}
@@ -256,7 +256,7 @@ function DupWarning({ guestName, existingMember, onKeep, onRemove }) {
             fontSize: 12,
             fontWeight: 600,
             cursor: "pointer",
-            fontFamily: "'DM Sans',sans-serif",
+            fontFamily: "'DM Sans', sans-serif",
           }}
         >
           Keep Anyway
@@ -272,7 +272,7 @@ function DupWarning({ guestName, existingMember, onKeep, onRemove }) {
             fontSize: 12,
             fontWeight: 600,
             cursor: "pointer",
-            fontFamily: "'DM Sans',sans-serif",
+            fontFamily: "'DM Sans', sans-serif",
           }}
         >
           Remove
@@ -357,32 +357,35 @@ export default function WeddingTracker() {
     setMembers((prev) => prev.map((m) => (m.id === mid ? fn(m) : m)));
   }, []);
 
-  const findDuplicate = useCallback((guestName, guestId, currentMemberId) => {
-    if (!guestName || !guestName.trim() || !members) return null;
-    const norm = guestName.trim().toLowerCase();
+  const findDuplicate = useCallback(
+    (guestName, guestId, currentMemberId) => {
+      if (!guestName || !guestName.trim() || !members) return null;
+      const norm = guestName.trim().toLowerCase();
 
-    for (const m of members) {
-      if (m.id === currentMemberId) continue;
-      for (const g of m.guests) {
-        if (g.id === guestId) continue;
-        if (g.name.trim().toLowerCase() === norm) {
-          return { memberName: m.name, guestId: g.id };
+      for (const m of members) {
+        if (m.id === currentMemberId) continue;
+        for (const g of m.guests) {
+          if (g.id === guestId) continue;
+          if ((g.name || "").trim().toLowerCase() === norm) {
+            return { memberName: m.name, guestId: g.id };
+          }
         }
       }
-    }
 
-    const sameMember = members.find((m) => m.id === currentMemberId);
-    if (sameMember) {
-      for (const g of sameMember.guests) {
-        if (g.id === guestId) continue;
-        if (g.name.trim().toLowerCase() === norm) {
-          return { memberName: sameMember.name + " (same list)", guestId: g.id };
+      const sameMember = members.find((m) => m.id === currentMemberId);
+      if (sameMember) {
+        for (const g of sameMember.guests) {
+          if (g.id === guestId) continue;
+          if ((g.name || "").trim().toLowerCase() === norm) {
+            return { memberName: `${sameMember.name} (same list)`, guestId: g.id };
+          }
         }
       }
-    }
 
-    return null;
-  }, [members]);
+      return null;
+    },
+    [members]
+  );
 
   const addGuest = async (mid) => {
     try {
@@ -444,10 +447,7 @@ export default function WeddingTracker() {
 
     const row = guestToRow(member, updatedGuest);
 
-    const { error } = await supabase
-      .from("guests")
-      .update(row)
-      .eq("id", gid);
+    const { error } = await supabase.from("guests").update(row).eq("id", gid);
 
     if (error) {
       console.error("Update guest failed", error);
@@ -496,10 +496,7 @@ export default function WeddingTracker() {
 
     const row = guestToRow(member, updatedGuest);
 
-    const { error } = await supabase
-      .from("guests")
-      .update(row)
-      .eq("id", gid);
+    const { error } = await supabase.from("guests").update(row).eq("id", gid);
 
     if (error) {
       console.error("Toggle event failed", error);
@@ -539,7 +536,7 @@ export default function WeddingTracker() {
           alignItems: "center",
           justifyContent: "center",
           minHeight: "100vh",
-          fontFamily: "'DM Sans',sans-serif",
+          fontFamily: "'DM Sans', sans-serif",
           color: "#a09585",
         }}
       >
@@ -568,7 +565,7 @@ export default function WeddingTracker() {
     let count = 0;
     for (const m of members) {
       for (const g of m.guests) {
-        if (!g.name.trim()) continue;
+        if (!(g.name || "").trim()) continue;
         const norm = g.name.trim().toLowerCase();
         if (seen.has(norm) && !g.dupAcknowledged) count++;
         if (!seen.has(norm)) seen.set(norm, m.name);
@@ -583,7 +580,9 @@ export default function WeddingTracker() {
     const children = gs.reduce((s, g) => s + g.children, 0);
     const byEv = EVENTS.map((ev) => ({
       event: ev,
-      people: gs.filter((g) => g.events[ev]).reduce((s, g) => s + g.adults + g.children, 0),
+      people: gs
+        .filter((g) => g.events[ev])
+        .reduce((s, g) => s + g.adults + g.children, 0),
     }));
     return { ...m, adults, children, total: adults + children, byEv };
   });
@@ -607,7 +606,7 @@ export default function WeddingTracker() {
         fontSize: 12,
         fontWeight: tabActive(id) ? 700 : 500,
         whiteSpace: "nowrap",
-        fontFamily: "'DM Sans',sans-serif",
+        fontFamily: "'DM Sans', sans-serif",
         transition: "all 0.2s",
         background: tabActive(id) ? "#3d3428" : "transparent",
         color: tabActive(id) ? "#fff" : "#8a7d6b",
@@ -637,7 +636,7 @@ export default function WeddingTracker() {
       style={{
         minHeight: "100vh",
         background: "linear-gradient(160deg,#faf7f2 0%,#f3ece2 40%,#ede5d8 100%)",
-        fontFamily: "'DM Sans',sans-serif",
+        fontFamily: "'DM Sans', sans-serif",
         padding: "20px 10px 40px",
       }}
     >
@@ -661,7 +660,7 @@ export default function WeddingTracker() {
         </div>
         <h1
           style={{
-            fontFamily: "'Playfair Display',serif",
+            fontFamily: "'Playfair Display', serif",
             fontSize: 30,
             fontWeight: 700,
             color: "#3d3428",
@@ -701,7 +700,7 @@ export default function WeddingTracker() {
           <span style={{ fontSize: 16 }}>⚠️</span>
           <span style={{ fontSize: 12, color: "#8a6d20", fontWeight: 500 }}>
             <strong>{dupCount}</strong> possible duplicate{dupCount > 1 ? "s" : ""} found across
-            member lists — review flagged guests below
+            member lists
           </span>
         </div>
       )}
@@ -764,7 +763,7 @@ export default function WeddingTracker() {
                       fontSize: 13,
                       fontWeight: 700,
                       color: "#3d3428",
-                      fontFamily: "'Playfair Display',serif",
+                      fontFamily: "'Playfair Display', serif",
                     }}
                   >
                     {ev.event}
@@ -821,37 +820,15 @@ export default function WeddingTracker() {
                   centerLabel="people"
                 />
                 <div style={{ display: "flex", gap: 12, fontSize: 11 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background: "#c4917b",
-                        display: "inline-block",
-                      }}
-                    />
-                    <span style={{ color: "#6b5e50" }}>Adults {totalAdults}</span>
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background: "#e2d5c8",
-                        display: "inline-block",
-                      }}
-                    />
-                    <span style={{ color: "#6b5e50" }}>Children {totalChildren}</span>
-                  </span>
+                  <span>Adults {totalAdults}</span>
+                  <span>Children {totalChildren}</span>
                 </div>
                 <div
                   style={{
                     fontSize: 26,
                     fontWeight: 700,
                     color: "#3d3428",
-                    fontFamily: "'Playfair Display',serif",
+                    fontFamily: "'Playfair Display', serif",
                   }}
                 >
                   {totalPeople}
@@ -888,168 +865,6 @@ export default function WeddingTracker() {
                   />
                 ))}
               </div>
-            </div>
-
-            <div
-              style={{
-                background: "#fff",
-                borderRadius: 14,
-                padding: 18,
-                boxShadow: "0 2px 14px rgba(139,115,85,0.07)",
-                marginBottom: 14,
-                overflowX: "auto",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 9,
-                  letterSpacing: 2,
-                  color: "#b8a992",
-                  textTransform: "uppercase",
-                  fontWeight: 600,
-                  marginBottom: 10,
-                }}
-              >
-                People per Member per Event
-              </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr style={{ borderBottom: "2px solid #efe9e0" }}>
-                    <th
-                      style={{
-                        padding: "8px 8px",
-                        textAlign: "left",
-                        fontSize: 10,
-                        color: "#b8a992",
-                        letterSpacing: 1,
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Member
-                    </th>
-                    {EVENTS.map((ev) => (
-                      <th
-                        key={ev}
-                        style={{
-                          padding: "8px 8px",
-                          textAlign: "center",
-                          fontSize: 10,
-                          color: EVENT_COLORS[ev],
-                          letterSpacing: 1,
-                          textTransform: "uppercase",
-                          fontWeight: 700,
-                        }}
-                      >
-                        {ev}
-                      </th>
-                    ))}
-                    <th
-                      style={{
-                        padding: "8px 8px",
-                        textAlign: "center",
-                        fontSize: 10,
-                        color: "#3d3428",
-                        letterSpacing: 1,
-                        textTransform: "uppercase",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mStats.map((m, i) => (
-                    <tr
-                      key={m.id}
-                      style={{
-                        borderBottom: "1px solid #f5f0e8",
-                        background: i % 2 === 0 ? "#fff" : "#fdfcf9",
-                        cursor: "pointer",
-                      }}
-                      onClick={() => setActiveTab(m.id)}
-                    >
-                      <td style={{ padding: "7px 8px", fontWeight: 600, color: "#4a3f33" }}>
-                        {m.name}
-                      </td>
-                      {m.byEv.map((e) => (
-                        <td
-                          key={e.event}
-                          style={{
-                            padding: "7px 8px",
-                            textAlign: "center",
-                            color: e.people > 0 ? "#4a3f33" : "#d4cdc0",
-                            fontWeight: e.people > 0 ? 600 : 400,
-                          }}
-                        >
-                          {e.people > 0 ? e.people : "—"}
-                        </td>
-                      ))}
-                      <td
-                        style={{
-                          padding: "7px 8px",
-                          textAlign: "center",
-                          fontWeight: 700,
-                          color: "#3d3428",
-                          fontFamily: "'Playfair Display',serif",
-                          fontSize: 14,
-                        }}
-                      >
-                        {m.total}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr style={{ borderTop: "2px solid #e0d8cc", background: "#faf7f2" }}>
-                    <td style={{ padding: "9px 8px", fontWeight: 700, color: "#3d3428" }}>
-                      TOTAL
-                    </td>
-                    {totalByEvent.map((ev) => (
-                      <td
-                        key={ev.event}
-                        style={{
-                          padding: "9px 8px",
-                          textAlign: "center",
-                          fontWeight: 700,
-                          color: EVENT_COLORS[ev.event],
-                          fontSize: 14,
-                        }}
-                      >
-                        {ev.adults + ev.children}
-                      </td>
-                    ))}
-                    <td
-                      style={{
-                        padding: "9px 8px",
-                        textAlign: "center",
-                        fontWeight: 700,
-                        color: "#3d3428",
-                        fontFamily: "'Playfair Display',serif",
-                        fontSize: 16,
-                      }}
-                    >
-                      {totalPeople}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div style={{ textAlign: "center" }}>
-              <button
-                onClick={resetData}
-                style={{
-                  background: "none",
-                  border: "1px solid #e0d8cc",
-                  borderRadius: 8,
-                  padding: "5px 14px",
-                  fontSize: 11,
-                  color: "#b8a992",
-                  cursor: "pointer",
-                  fontFamily: "'DM Sans',sans-serif",
-                }}
-              >
-                Reset All Data
-              </button>
             </div>
           </>
         )}
@@ -1096,14 +911,12 @@ export default function WeddingTracker() {
                               .update({ name: newName })
                               .eq("id", activeMember.id);
 
-                            if (error) {
-                              console.error("Update member name failed", error);
-                            }
+                            if (error) console.error("Update member name failed", error);
                           }}
                           onBlur={() => setEditingMemberName(null)}
                           onKeyDown={(e) => e.key === "Enter" && setEditingMemberName(null)}
                           style={{
-                            fontFamily: "'Playfair Display',serif",
+                            fontFamily: "'Playfair Display', serif",
                             fontSize: 20,
                             fontWeight: 700,
                             border: "1px solid #d9d1c3",
@@ -1117,7 +930,7 @@ export default function WeddingTracker() {
                       ) : (
                         <h2
                           style={{
-                            fontFamily: "'Playfair Display',serif",
+                            fontFamily: "'Playfair Display', serif",
                             fontSize: 20,
                             fontWeight: 700,
                             color: "#3d3428",
@@ -1126,13 +939,11 @@ export default function WeddingTracker() {
                           }}
                           onClick={() => setEditingMemberName(activeMember.id)}
                         >
-                          {activeMember.name}'s Guests{" "}
-                          <span style={{ fontSize: 12, color: "#c4b9a8" }}>✎</span>
+                          {activeMember.name}'s Guests <span style={{ fontSize: 12, color: "#c4b9a8" }}>✎</span>
                         </h2>
                       )}
                       <div style={{ fontSize: 11, color: "#a09585", marginTop: 2 }}>
-                        {activeMember.guests.length} guests · {ms.total} people ({ms.adults} adults,{" "}
-                        {ms.children} children)
+                        {activeMember.guests.length} guests · {ms.total} people ({ms.adults} adults, {ms.children} children)
                       </div>
                     </div>
 
@@ -1147,7 +958,7 @@ export default function WeddingTracker() {
                         fontSize: 13,
                         fontWeight: 600,
                         cursor: "pointer",
-                        fontFamily: "'DM Sans',sans-serif",
+                        fontFamily: "'DM Sans', sans-serif",
                       }}
                     >
                       + Add Guest
@@ -1178,19 +989,12 @@ export default function WeddingTracker() {
                             fontSize: 20,
                             fontWeight: 700,
                             color: EVENT_COLORS[ev.event],
-                            fontFamily: "'Playfair Display',serif",
+                            fontFamily: "'Playfair Display', serif",
                           }}
                         >
                           {ev.people}
                         </div>
-                        <div
-                          style={{
-                            fontSize: 9,
-                            color: "#a09585",
-                            letterSpacing: 1,
-                            textTransform: "uppercase",
-                          }}
-                        >
+                        <div style={{ fontSize: 9, color: "#a09585", letterSpacing: 1, textTransform: "uppercase" }}>
                           {ev.event}
                         </div>
                       </div>
@@ -1209,7 +1013,7 @@ export default function WeddingTracker() {
                   {activeMember.guests.length === 0 ? (
                     <div style={{ padding: 44, textAlign: "center", color: "#c4b9a8" }}>
                       <div style={{ fontSize: 28, marginBottom: 6 }}>🎉</div>
-                      No guests yet — click <strong>+ Add Guest</strong> to start
+                      No guests yet - click <strong>+ Add Guest</strong> to start
                     </div>
                   ) : (
                     <div style={{ overflowX: "auto" }}>
@@ -1256,7 +1060,7 @@ export default function WeddingTracker() {
                               borderRadius: 6,
                               padding: "4px 7px",
                               fontSize: 13,
-                              fontFamily: "'DM Sans',sans-serif",
+                              fontFamily: "'DM Sans', sans-serif",
                               color: "#3d3428",
                               background: "#fdfcfa",
                               outline: "none",
@@ -1273,9 +1077,7 @@ export default function WeddingTracker() {
                                       : idx % 2 === 0
                                       ? "#fff"
                                       : "#fdfcf9",
-                                    borderLeft: showDupWarning
-                                      ? "3px solid #f0c96b"
-                                      : "3px solid transparent",
+                                    borderLeft: showDupWarning ? "3px solid #f0c96b" : "3px solid transparent",
                                   }}
                                 >
                                   <td style={{ ...cs, color: "#c4b9a8", fontWeight: 600, width: 28 }}>
@@ -1288,17 +1090,11 @@ export default function WeddingTracker() {
                                         style={{ ...inp, minWidth: 140, width: "100%" }}
                                         value={g.name}
                                         placeholder="Guest name"
-                                        onChange={(e) =>
-                                          updGuest(activeMember.id, g.id, "name", e.target.value)
-                                        }
+                                        onChange={(e) => updGuest(activeMember.id, g.id, "name", e.target.value)}
                                       />
                                     ) : (
                                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                        {showDupWarning && (
-                                          <span style={{ fontSize: 14 }} title="Duplicate detected">
-                                            ⚠️
-                                          </span>
-                                        )}
+                                        {showDupWarning && <span style={{ fontSize: 14 }}>⚠️</span>}
                                         <span
                                           style={{ cursor: "pointer", fontWeight: 500 }}
                                           onClick={() => setEditingGuest(g.id)}
@@ -1405,12 +1201,6 @@ export default function WeddingTracker() {
                                           fontSize: 15,
                                           cursor: "pointer",
                                           color: "#ddd3c4",
-                                        }}
-                                        onMouseEnter={(e) => {
-                                          e.currentTarget.style.color = "#c4917b";
-                                        }}
-                                        onMouseLeave={(e) => {
-                                          e.currentTarget.style.color = "#ddd3c4";
                                         }}
                                       >
                                         ×
