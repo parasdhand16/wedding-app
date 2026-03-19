@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { supabase } from "../lib/supabase";
 
 const EVENTS = ["Wedding", "Engagement", "Moga", "Path"];
 const EVENT_COLORS = { Wedding: "#6b8f71", Engagement: "#c4917b", Moga: "#8b7355", Path: "#7b8fa6" };
@@ -9,6 +10,46 @@ const DEFAULT_MEMBERS = [
   "Paras", "Member 2", "Member 3", "Member 4", "Member 5",
   "Member 6", "Member 7", "Member 8", "Member 9", "Member 10",
 ];
+
+function memberRowToMember(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    guests: [],
+  };
+}
+
+function guestRowToGuest(row) {
+  return {
+    id: row.id,
+    name: row.guest_name || "",
+    adults: row.adults ?? 1,
+    children: row.children ?? 0,
+    events: {
+      Wedding: !!row.wedding,
+      Engagement: !!row.engagement,
+      Moga: !!row.moga,
+      Path: !!row.path,
+    },
+    dupAcknowledged: !!row.dup_acknowledged,
+  };
+}
+
+function guestToRow(member, guest) {
+  return {
+    id: guest.id,
+    family_member_id: member.id,
+    family_member: member.name,
+    guest_name: guest.name,
+    adults: guest.adults,
+    children: guest.children,
+    wedding: guest.events.Wedding,
+    engagement: guest.events.Engagement,
+    moga: guest.events.Moga,
+    path: guest.events.Path,
+    dup_acknowledged: guest.dupAcknowledged,
+  };
+}
 
 function createEmptyData() {
   return DEFAULT_MEMBERS.map((name, i) => ({ id: `m${i}`, name, guests: [] }));
@@ -104,85 +145,195 @@ function DupWarning({ guestName, existingMember, onKeep, onRemove }) {
 
 /* ══════ MAIN ══════ */
 export default function WeddingTracker() {
-  const [members, setMembers] = useState(null);
-  const [activeTab, setActiveTab] = useState("overview");
-  const [editingGuest, setEditingGuest] = useState(null);
-  const [editingMemberName, setEditingMemberName] = useState(null);
-  const [loaded, setLoaded] = useState(false);
-  const saveTimer = useRef(null);
+const [members, setMembers] = useState(null);
+const [activeTab, setActiveTab] = useState("overview");
+const [editingGuest, setEditingGuest] = useState(null);
+const [editingMemberName, setEditingMemberName] = useState(null);
+const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await window.storage.get("wedding-guests-v4");
-        if (res && res.value) setMembers(JSON.parse(res.value));
-        else setMembers(createEmptyData());
-      } catch { setMembers(createEmptyData()); }
-      setLoaded(true);
-    })();
-  }, []);
+useEffect(() => {
+  async function loadData() {
+    const { data: memberRows, error: memberError } = await supabase
+      .from("family_members")
+      .select("*")
+      .order("display_order");
 
-  useEffect(() => {
-    if (!loaded || !members) return;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      try { await window.storage.set("wedding-guests-v4", JSON.stringify(members)); }
-      catch (e) { console.error("Save failed", e); }
-    }, 500);
-  }, [members, loaded]);
+    const { data: guestRows, error: guestError } = await supabase
+      .from("guests")
+      .select("*");
+
+    if (memberError || guestError) {
+      console.error("Load failed", memberError || guestError);
+      setMembers(createEmptyData());
+      setLoading(false);
+      return;
+    }
+
+    if (!memberRows || memberRows.length === 0) {
+      const starterMembers = DEFAULT_MEMBERS.map((name, i) => ({
+        id: `m${i}`,
+        name,
+        display_order: i,
+      }));
+
+      const { error: seedError } = await supabase
+        .from("family_members")
+        .insert(starterMembers);
+
+      if (seedError) {
+        console.error("Seeding family members failed", seedError);
+        setMembers(createEmptyData());
+        setLoading(false);
+        return;
+      }
+
+      setMembers(createEmptyData());
+      setLoading(false);
+      return;
+    }
+
+    const membersMap = {};
+
+    memberRows.forEach((m) => {
+      membersMap[m.id] = {
+        ...memberRowToMember(m),
+        guests: [],
+      };
+    });
+
+    guestRows?.forEach((g) => {
+      const member = membersMap[g.family_member_id];
+      if (member) {
+        member.guests.push(guestRowToGuest(g));
+      }
+    });
+
+    setMembers(Object.values(membersMap));
+    setLoading(false);
+  }
+
+  loadData();
+}, []);
 
   const updateMember = useCallback((mid, fn) => {
-    setMembers(prev => prev.map(m => m.id === mid ? fn(m) : m));
-  }, []);
+  setMembers((prev) => prev.map((m) => (m.id === mid ? fn(m) : m)));
+}, []);
 
-  /* ── Duplicate detection ── */
-  const findDuplicate = useCallback((guestName, guestId, currentMemberId) => {
-    if (!guestName || !guestName.trim() || !members) return null;
-    const norm = guestName.trim().toLowerCase();
-    for (const m of members) {
-      if (m.id === currentMemberId) continue;
-      for (const g of m.guests) {
-        if (g.id === guestId) continue;
-        if (g.name.trim().toLowerCase() === norm) {
-          return { memberName: m.name, guestId: g.id };
-        }
-      }
-    }
-    // Also check within same member
-    const sameMember = members.find(m => m.id === currentMemberId);
-    if (sameMember) {
-      for (const g of sameMember.guests) {
-        if (g.id === guestId) continue;
-        if (g.name.trim().toLowerCase() === norm) {
-          return { memberName: sameMember.name + " (same list)", guestId: g.id };
-        }
-      }
-    }
-    return null;
-  }, [members]);
+const addGuest = async (mid) => {
+  const member = members.find((m) => m.id === mid);
+  if (!member) return;
 
-  const addGuest = (mid) => {
-    const g = newGuest();
-    updateMember(mid, m => ({ ...m, guests: [...m.guests, g] }));
-    setEditingGuest(g.id);
-  };
-  const removeGuest = (mid, gid) => {
-    updateMember(mid, m => ({ ...m, guests: m.guests.filter(g => g.id !== gid) }));
-    if (editingGuest === gid) setEditingGuest(null);
-  };
-  const updGuest = (mid, gid, field, val) => {
-    updateMember(mid, m => ({ ...m, guests: m.guests.map(g => g.id === gid ? { ...g, [field]: val, ...(field === "name" ? { dupAcknowledged: false } : {}) } : g) }));
-  };
-  const acknowledgeDup = (mid, gid) => {
-    updateMember(mid, m => ({ ...m, guests: m.guests.map(g => g.id === gid ? { ...g, dupAcknowledged: true } : g) }));
-  };
-  const toggleEv = (mid, gid, ev) => {
-    updateMember(mid, m => ({
-      ...m, guests: m.guests.map(g => g.id === gid ? { ...g, events: { ...g.events, [ev]: !g.events[ev] } } : g),
-    }));
+  const g = newGuest();
+  const row = guestToRow(member, g);
+
+  const { error } = await supabase.from("guests").insert([row]);
+  if (error) {
+    console.error("Add guest failed", error);
+    return;
+  }
+
+  updateMember(mid, (m) => ({ ...m, guests: [...m.guests, g] }));
+  setEditingGuest(g.id);
+};
+
+const removeGuest = async (mid, gid) => {
+  const { error } = await supabase.from("guests").delete().eq("id", gid);
+  if (error) {
+    console.error("Remove guest failed", error);
+    return;
+  }
+
+  updateMember(mid, (m) => ({
+    ...m,
+    guests: m.guests.filter((g) => g.id !== gid),
+  }));
+
+  if (editingGuest === gid) setEditingGuest(null);
+};
+
+const updGuest = async (mid, gid, field, val) => {
+  const member = members.find((m) => m.id === mid);
+  if (!member) return;
+
+  const guest = member.guests.find((g) => g.id === gid);
+  if (!guest) return;
+
+  const updatedGuest = {
+    ...guest,
+    [field]: val,
+    ...(field === "name" ? { dupAcknowledged: false } : {}),
   };
 
-  if (!loaded || !members) return (
+  const row = guestToRow(member, updatedGuest);
+
+  const { error } = await supabase
+    .from("guests")
+    .update(row)
+    .eq("id", gid);
+
+  if (error) {
+    console.error("Update guest failed", error);
+    return;
+  }
+
+  updateMember(mid, (m) => ({
+    ...m,
+    guests: m.guests.map((g) => (g.id === gid ? updatedGuest : g)),
+  }));
+};
+
+const acknowledgeDup = async (mid, gid) => {
+  const { error } = await supabase
+    .from("guests")
+    .update({ dup_acknowledged: true })
+    .eq("id", gid);
+
+  if (error) {
+    console.error("Acknowledge duplicate failed", error);
+    return;
+  }
+
+  updateMember(mid, (m) => ({
+    ...m,
+    guests: m.guests.map((g) =>
+      g.id === gid ? { ...g, dupAcknowledged: true } : g
+    ),
+  }));
+};
+
+const toggleEv = async (mid, gid, ev) => {
+  const member = members.find((m) => m.id === mid);
+  if (!member) return;
+
+  const guest = member.guests.find((g) => g.id === gid);
+  if (!guest) return;
+
+  const updatedGuest = {
+    ...guest,
+    events: {
+      ...guest.events,
+      [ev]: !guest.events[ev],
+    },
+  };
+
+  const row = guestToRow(member, updatedGuest);
+
+  const { error } = await supabase
+    .from("guests")
+    .update(row)
+    .eq("id", gid);
+
+  if (error) {
+    console.error("Toggle event failed", error);
+    return;
+  }
+
+  updateMember(mid, (m) => ({
+    ...m,
+    guests: m.guests.map((g) => (g.id === gid ? updatedGuest : g)),
+  }));
+};
+  if (loading || !members) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "'DM Sans',sans-serif", color: "#a09585" }}>Loading...</div>
   );
 
@@ -224,7 +375,24 @@ export default function WeddingTracker() {
   });
   const maxMT = Math.max(...mStats.map(m => m.total), 1);
 
-  const resetData = () => { if (confirm("Clear ALL guest data?")) { setMembers(createEmptyData()); setActiveTab("overview"); } };
+  const resetData = async () => {
+  if (!confirm("Clear ALL guest data?")) return;
+
+  const { error } = await supabase.from("guests").delete().neq("id", "");
+
+  if (error) {
+    console.error("Reset failed", error);
+    return;
+  }
+
+  setMembers((prev) =>
+    prev.map((m) => ({
+      ...m,
+      guests: [],
+    }))
+  );
+  setActiveTab("overview");
+};
 
   const tabActive = (id) => activeTab === id;
   const tabBtn = (id, label, count) => (
@@ -402,7 +570,20 @@ export default function WeddingTracker() {
                 <div>
                   {editingMemberName === activeMember.id ? (
                     <input autoFocus value={activeMember.name}
-                      onChange={e => updateMember(activeMember.id, m => ({ ...m, name: e.target.value }))}
+                      onChange={async (e) => {
+  const newName = e.target.value;
+
+  updateMember(activeMember.id, (m) => ({ ...m, name: newName }));
+
+  const { error } = await supabase
+    .from("family_members")
+    .update({ name: newName })
+    .eq("id", activeMember.id);
+
+  if (error) {
+    console.error("Update member name failed", error);
+  }
+}}
                       onBlur={() => setEditingMemberName(null)}
                       onKeyDown={e => e.key === "Enter" && setEditingMemberName(null)}
                       style={{
