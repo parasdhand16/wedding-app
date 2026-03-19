@@ -220,18 +220,38 @@ useEffect(() => {
 }, []);
 
 const addGuest = async (mid) => {
-  const member = members.find((m) => m.id === mid);
-  if (!member) return;
+  try {
+    console.log("Adding guest for:", mid);
 
-  const g = newGuest();
-  const row = guestToRow(member, g);
+    const member = members.find((m) => m.id === mid);
+    if (!member) {
+      alert("Member not found");
+      return;
+    }
 
-  const { error } = await supabase.from("guests").insert([row]);
-  if (error) {
-    console.error("Add guest failed", error);
-    return;
+    const g = newGuest();
+    console.log("New guest object:", g);
+
+    const row = guestToRow(member, g);
+    console.log("Row to insert:", row);
+
+    const { data, error } = await supabase.from("guests").insert([row]);
+
+    console.log("Supabase response:", { data, error });
+
+    if (error) {
+      alert("ERROR: " + error.message);
+      return;
+    }
+
+    updateMember(mid, (m) => ({ ...m, guests: [...m.guests, g] }));
+    setEditingGuest(g.id);
+
+  } catch (err) {
+    console.error(err);
+    alert("CRASH: " + err.message);
   }
-
+};
   updateMember(mid, (m) => ({ ...m, guests: [...m.guests, g] }));
   setEditingGuest(g.id);
 };
