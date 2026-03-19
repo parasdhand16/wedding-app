@@ -223,6 +223,10 @@ const addGuest = async (mid) => {
   try {
     console.log("Adding guest for:", mid);
 
+    const addGuest = async (mid) => {
+  try {
+    console.log("Adding guest for:", mid);
+
     const member = members.find((m) => m.id === mid);
     if (!member) {
       alert("Member not found");
@@ -244,6 +248,39 @@ const addGuest = async (mid) => {
       return;
     }
 
+    updateMember(mid, (m) => ({ ...m, guests: [...m.guests, g] }));
+    setEditingGuest(g.id);
+  } catch (err) {
+    console.error(err);
+    alert("CRASH: " + err.message);
+  }
+};
+  const findDuplicate = useCallback((guestName, guestId, currentMemberId) => {
+  if (!guestName || !guestName.trim() || !members) return null;
+  const norm = guestName.trim().toLowerCase();
+
+  for (const m of members) {
+    if (m.id === currentMemberId) continue;
+    for (const g of m.guests) {
+      if (g.id === guestId) continue;
+      if (g.name.trim().toLowerCase() === norm) {
+        return { memberName: m.name, guestId: g.id };
+      }
+    }
+  }
+
+  const sameMember = members.find((m) => m.id === currentMemberId);
+  if (sameMember) {
+    for (const g of sameMember.guests) {
+      if (g.id === guestId) continue;
+      if (g.name.trim().toLowerCase() === norm) {
+        return { memberName: sameMember.name + " (same list)", guestId: g.id };
+      }
+    }
+  }
+
+  return null;
+}, [members]);
     updateMember(mid, (m) => ({ ...m, guests: [...m.guests, g] }));
     setEditingGuest(g.id);
 
@@ -764,4 +801,4 @@ const toggleEv = async (mid, gid, ev) => {
       </div>
     </div>
   );
-}
+
