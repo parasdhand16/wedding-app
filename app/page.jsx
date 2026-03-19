@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase } from "./lib/supabase";
 
 const EVENTS = ["Wedding", "Engagement", "Moga", "Path"];
 const EVENT_COLORS = { Wedding: "#6b8f71", Engagement: "#c4917b", Moga: "#8b7355", Path: "#7b8fa6" };
