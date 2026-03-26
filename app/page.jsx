@@ -288,20 +288,23 @@ export default function WeddingTracker() {
   const [editingGuest, setEditingGuest] = useState(null);
   const [editingMemberName, setEditingMemberName] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState(null);
 
   useEffect(() => {
     async function loadData() {
-      const { data: memberRows, error: memberError } = await supabase
+      const { data: memberRows, error: memberError } = await getSupabase()
         .from("family_members")
         .select("*")
         .order("created_at", { ascending: true });
 
-      const { data: guestRows, error: guestError } = await supabase
+      const { data: guestRows, error: guestError } = await getSupabase()
         .from("guests")
         .select("*");
 
       if (memberError || guestError) {
-        console.error("Load failed", memberError || guestError);
+        const err = memberError || guestError;
+        console.error("Load failed", err);
+        setDbError(err.message || JSON.stringify(err));
         setMembers(createEmptyData());
         setLoading(false);
         return;
@@ -314,7 +317,7 @@ export default function WeddingTracker() {
           display_order: i,
         }));
 
-        const { error: seedError } = await supabase
+        const { error: seedError } = await getSupabase()
           .from("family_members")
           .insert(starterMembers);
 
@@ -461,7 +464,7 @@ export default function WeddingTracker() {
   };
 
   const acknowledgeDup = async (mid, gid) => {
-    const { error } = await supabase
+    const { error } = await getSupabase()
       .from("guests")
       .update({ dup_acknowledged: true })
       .eq("id", gid);
@@ -681,6 +684,17 @@ export default function WeddingTracker() {
           }}
         />
       </div>
+
+      {dbError && (
+        <div style={{
+          maxWidth: 960, margin: "0 auto 12px", background: "#fde8e8",
+          border: "1px solid #f5a0a0", borderRadius: 10, padding: "10px 14px",
+          fontSize: 12, color: "#8a2020", fontWeight: 500,
+        }}>
+          <strong>Database error:</strong> {dbError}
+          <br /><span style={{ opacity: 0.7 }}>Check that your Supabase tables exist and env vars are set in Vercel.</span>
+        </div>
+      )}
 
       {dupCount > 0 && (
         <div
@@ -906,7 +920,7 @@ export default function WeddingTracker() {
                               name: newName,
                             }));
 
-                            const { error } = await supabase
+                            const { error } = await getSupabase()
                               .from("family_members")
                               .update({ name: newName })
                               .eq("id", activeMember.id);
