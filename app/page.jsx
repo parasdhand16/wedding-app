@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { supabase } from "./lib/supabase";
+import { getSupabase } from "./lib/supabase";
 
 const EVENTS = ["Wedding", "Engagement", "Moga", "Path"];
 
@@ -294,7 +294,7 @@ export default function WeddingTracker() {
       const { data: memberRows, error: memberError } = await supabase
         .from("family_members")
         .select("*")
-        .order("display_order");
+        .order("created_at", { ascending: true });
 
       const { data: guestRows, error: guestError } = await supabase
         .from("guests")
@@ -398,7 +398,7 @@ export default function WeddingTracker() {
       const g = newGuest();
       const row = guestToRow(member, g);
 
-      const { error } = await supabase.from("guests").insert([row]);
+      const { error } = await getSupabase().from("guests").insert([row]);
 
       if (error) {
         alert("ERROR: " + error.message);
@@ -418,7 +418,7 @@ export default function WeddingTracker() {
   };
 
   const removeGuest = async (mid, gid) => {
-    const { error } = await supabase.from("guests").delete().eq("id", gid);
+    const { error } = await getSupabase().from("guests").delete().eq("id", gid);
     if (error) {
       console.error("Remove guest failed", error);
       return;
@@ -447,7 +447,7 @@ export default function WeddingTracker() {
 
     const row = guestToRow(member, updatedGuest);
 
-    const { error } = await supabase.from("guests").update(row).eq("id", gid);
+    const { error } = await getSupabase().from("guests").update(row).eq("id", gid);
 
     if (error) {
       console.error("Update guest failed", error);
@@ -496,7 +496,7 @@ export default function WeddingTracker() {
 
     const row = guestToRow(member, updatedGuest);
 
-    const { error } = await supabase.from("guests").update(row).eq("id", gid);
+    const { error } = await getSupabase().from("guests").update(row).eq("id", gid);
 
     if (error) {
       console.error("Toggle event failed", error);
@@ -512,7 +512,7 @@ export default function WeddingTracker() {
   const resetData = async () => {
     if (!confirm("Clear ALL guest data?")) return;
 
-    const { error } = await supabase.from("guests").delete().neq("id", "");
+    const { error } = await getSupabase().from("guests").delete().neq("id", "");
 
     if (error) {
       console.error("Reset failed", error);
