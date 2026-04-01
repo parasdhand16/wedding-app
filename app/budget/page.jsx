@@ -255,7 +255,7 @@ CREATE TABLE budget_items (
       {dbError && (
         <div style={{ maxWidth: 960, margin: "0 auto 20px", background: "#fef8ec", border: "1px solid #f0c96b", borderRadius: 10, padding: "16px", color: "#8a6d20" }}>
           <h3 style={{ margin: "0 0 10px 0", fontSize: 16 }}>⚠️ Database Setup Required</h3>
-          <p style={{ margin: "0 0 10px 0", fontSize: 14 }}>{dbError}</p>
+          <p style={{ margin: "0 0 10px 0", fontSize: 14, color: "#3d3428" }}>{dbError}</p>
           <div style={{ background: "#fff", padding: "10px", borderRadius: 6, fontSize: 12, fontFamily: "monospace", overflowX: "auto", position: "relative" }}>
             <button 
               onClick={() => copyToClipboard(sqlSnippet)}
@@ -295,7 +295,7 @@ CREATE TABLE budget_items (
                     placeholder="New Event (e.g. Sangeet)"
                     value={newEventName}
                     onChange={(e) => setNewEventName(e.target.value)}
-                    style={{ flex: 1, padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14 }}
+                    style={{ flex: 1, padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14, color: "#3d3428" }}
                   />
                   <button type="submit" style={{ background: "#c4917b", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600, cursor: "pointer" }}>
                     Add
@@ -307,7 +307,7 @@ CREATE TABLE budget_items (
                     {eventsTotals.map((ev) => (
                       <div key={ev.name} style={{ background: "#faf7f2", borderRadius: 8, padding: "10px 14px", border: "1px solid #efeae0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
-                          <div style={{ fontWeight: 600, color: "#3d3428", fontSize: 14 }}>{ev.name}</div>
+                          <div style={{ fontWeight: 600, color: "#3d3428", fontSize: 14, color: "#3d3428" }}>{ev.name}</div>
                           <div style={{ fontSize: 12, color: "#8a7d6b", marginTop: 2 }}>
                             Total: <strong>{formatCurrency(ev.total)}</strong> <span style={{opacity: 0.5}}>|</span> Paid: <strong style={{color: "#6b8f71"}}>{formatCurrency(ev.paid)}</strong>
                           </div>
@@ -329,13 +329,13 @@ CREATE TABLE budget_items (
                     placeholder="Expense Name (e.g. Venue Booking)"
                     value={newItemParams.name}
                     onChange={(e) => setNewItemParams({ ...newItemParams, name: e.target.value })}
-                    style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14 }}
+                    style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14, color: "#3d3428" }}
                     required
                   />
                   <select
                     value={newItemParams.event_name}
                     onChange={(e) => setNewItemParams({ ...newItemParams, event_name: e.target.value })}
-                    style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14, background: "#fff" }}
+                    style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14, color: "#3d3428", background: "#fff" }}
                     required
                   >
                     <option value="" disabled>Select Event...</option>
@@ -346,7 +346,7 @@ CREATE TABLE budget_items (
                     placeholder="Amount (₹)"
                     value={newItemParams.amount}
                     onChange={(e) => setNewItemParams({ ...newItemParams, amount: e.target.value })}
-                    style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14 }}
+                    style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14, color: "#3d3428" }}
                     required
                   />
                   <button
@@ -362,7 +362,7 @@ CREATE TABLE budget_items (
 
             {/* Expenses List */}
             <div style={{ flex: "2 1 400px", background: "#fff", borderRadius: 14, boxShadow: "0 2px 14px rgba(139,115,85,0.07)", overflow: "hidden" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, textAlign: "left" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, color: "#3d3428", textAlign: "left" }}>
                 <thead style={{ background: "#faf7f2", borderBottom: "1px solid #f0ebe4" }}>
                   <tr>
                     <th style={{ padding: "14px 16px", color: "#8a7d6b", fontWeight: 600 }}>Expense</th>
@@ -415,8 +415,8 @@ CREATE TABLE budget_items (
                             <input type="checkbox" checked={item.paid} onChange={() => togglePaid(item)} style={{ cursor: "pointer", width: 16, height: 16, accentColor: "#6b8f71" }} />
                           </td>
                           <td style={{ padding: "16px", textAlign: "right" }}>
-                            <button onClick={() => startEditing(item)} style={{ background: "transparent", border: "none", color: "#a09585", cursor: "pointer", marginRight: 8, fontSize: 14 }}>✎</button>
-                            <button onClick={() => deleteItem(item.id)} style={{ background: "transparent", border: "none", color: "#c4917b", cursor: "pointer", fontSize: 14 }}>🗑</button>
+                            <button onClick={() => startEditing(item)} style={{ background: "transparent", border: "none", color: "#a09585", cursor: "pointer", marginRight: 8, fontSize: 14, color: "#3d3428" }}>✎</button>
+                            <button onClick={() => deleteItem(item.id)} style={{ background: "transparent", border: "none", color: "#c4917b", cursor: "pointer", fontSize: 14, color: "#3d3428" }}>🗑</button>
                           </td>
                         </>
                       )}
