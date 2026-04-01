@@ -705,11 +705,6 @@ export default function WeddingTracker() {
         <div style={{ fontSize: 11, color: "#b8a992", marginTop: 3 }}>
           Wedding · Engagement · Lapaza · Path
         </div>
-        <div style={{ marginTop: 12 }}>
-          <a href="/budget" style={{ fontSize: 12, color: "#c4917b", fontWeight: 600, textDecoration: "none", border: "1px solid #c4917b", padding: "4px 10px", borderRadius: 12 }}>
-            Manage Budget →
-          </a>
-        </div>
         <div
           style={{
             width: 60,

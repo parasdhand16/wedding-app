@@ -137,7 +137,13 @@ export default function BudgetTracker() {
   };
 
   const deleteEvent = async (name) => {
-    if(!confirm(`Are you sure you want to delete the event '${name}'? All expenses tied to it will also be deleted!`)) return;
+    if(!window.confirm(`Are you sure you want to delete the event '${name}'? All expenses tied to it will also be deleted!`)) {
+      return;
+    }
+    
+    // Delete items first to bypass potential foreign key errors
+    await getSupabase().from("budget_items").delete().eq("event_name", name);
+    
     const { error } = await getSupabase().from("budget_events").delete().eq("name", name);
     if (!error) {
       setEvents(events.filter(ev => ev.name !== name));
@@ -242,7 +248,6 @@ CREATE TABLE budget_items (
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
       
       <div style={{ textAlign: "center", marginBottom: 18 }}>
-        <Link href="/" style={{ color: "#a09585", fontSize: 12, textDecoration: "none", display: "inline-block", marginBottom: 10 }}>← Back to Guest List</Link>
         <div style={{ fontSize: 10, letterSpacing: 4, color: "#b8a992", textTransform: "uppercase", marginBottom: 4 }}>
           Wedding
         </div>
