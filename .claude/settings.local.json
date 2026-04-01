@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat /Users/parasdhand/wedding-app/app/lib/*.ts)",
+      "Bash(cat /Users/parasdhand/wedding-app/app/lib/*.tsx)",
+      "Bash(ls -la /Users/parasdhand/wedding-app/.env*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(find /Users/parasdhand/wedding-app/node_modules/next/dist/docs -name *segment* -o -name *dynamic*)"
+    ]
+  }
+}

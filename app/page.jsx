@@ -3,12 +3,12 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { getSupabase } from "./lib/supabase";
 
-const EVENTS = ["Wedding", "Engagement", "Moga", "Path"];
+const EVENTS = ["Wedding", "Engagement", "Lapaza", "Path"];
 
 const EVENT_COLORS = {
   Wedding: "#6b8f71",
   Engagement: "#c4917b",
-  Moga: "#8b7355",
+  Lapaza: "#8b7355",
   Path: "#7b8fa6",
 };
 
@@ -22,7 +22,6 @@ const DEFAULT_MEMBERS = [
   "Member 7",
   "Member 8",
   "Member 9",
-  "Member 10",
 ];
 
 function memberRowToMember(row) {
@@ -42,7 +41,7 @@ function guestRowToGuest(row) {
     events: {
       Wedding: !!row.wedding,
       Engagement: !!row.engagement,
-      Moga: !!row.moga,
+      Lapaza: !!row.moga,
       Path: !!row.path,
     },
     dupAcknowledged: !!row.dup_acknowledged,
@@ -58,7 +57,7 @@ function guestToRow(member, guest) {
     children: guest.children,
     wedding: guest.events.Wedding,
     engagement: guest.events.Engagement,
-    moga: guest.events.Moga,
+    moga: guest.events.Lapaza,
     path: guest.events.Path,
     dup_acknowledged: guest.dupAcknowledged,
   };
@@ -81,7 +80,7 @@ function newGuest() {
     events: {
       Wedding: false,
       Engagement: false,
-      Moga: false,
+      Lapaza: false,
       Path: false,
     },
     dupAcknowledged: false,
@@ -289,6 +288,7 @@ export default function WeddingTracker() {
   const [editingMemberName, setEditingMemberName] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(null);
+  const [unsavedGuests, setUnsavedGuests] = useState(new Set());
 
   useEffect(() => {
     async function loadData() {
@@ -390,30 +390,59 @@ export default function WeddingTracker() {
     [members]
   );
 
-  const addGuest = async (mid) => {
+  const addGuest = (mid) => {
+    const member = members.find((m) => m.id === mid);
+    if (!member) {
+      alert("Member not found");
+      return;
+    }
+
+    const g = newGuest();
+
+    updateMember(mid, (m) => ({
+      ...m,
+      guests: [...m.guests, g],
+    }));
+
+    setUnsavedGuests((prev) => new Set(prev).add(g.id));
+    setEditingGuest(g.id);
+  };
+
+  const commitGuest = async (mid, gid) => {
+    const member = members.find((m) => m.id === mid);
+    if (!member) return;
+
+    const guest = member.guests.find((g) => g.id === gid);
+    if (!guest) return;
+
+    if (!guest.name || !guest.name.trim()) {
+      updateMember(mid, (m) => ({
+        ...m,
+        guests: m.guests.filter((g) => g.id !== gid),
+      }));
+      setUnsavedGuests((prev) => {
+        const next = new Set(prev);
+        next.delete(gid);
+        return next;
+      });
+      setEditingGuest(null);
+      return;
+    }
+
     try {
-      const member = members.find((m) => m.id === mid);
-      if (!member) {
-        alert("Member not found");
-        return;
-      }
-
-      const g = newGuest();
-      const row = guestToRow(member, g);
-
+      const row = guestToRow(member, guest);
       const { error } = await getSupabase().from("guests").insert([row]);
 
       if (error) {
-        alert("ERROR: " + error.message);
+        alert("ERROR saving guest: " + error.message);
         return;
       }
 
-      updateMember(mid, (m) => ({
-        ...m,
-        guests: [...m.guests, g],
-      }));
-
-      setEditingGuest(g.id);
+      setUnsavedGuests((prev) => {
+        const next = new Set(prev);
+        next.delete(gid);
+        return next;
+      });
     } catch (err) {
       console.error(err);
       alert("CRASH: " + err.message);
@@ -448,19 +477,20 @@ export default function WeddingTracker() {
       ...(field === "name" ? { dupAcknowledged: false } : {}),
     };
 
+    updateMember(mid, (m) => ({
+      ...m,
+      guests: m.guests.map((g) => (g.id === gid ? updatedGuest : g)),
+    }));
+
+    if (unsavedGuests.has(gid)) return;
+
     const row = guestToRow(member, updatedGuest);
 
     const { error } = await getSupabase().from("guests").update(row).eq("id", gid);
 
     if (error) {
       console.error("Update guest failed", error);
-      return;
     }
-
-    updateMember(mid, (m) => ({
-      ...m,
-      guests: m.guests.map((g) => (g.id === gid ? updatedGuest : g)),
-    }));
   };
 
   const acknowledgeDup = async (mid, gid) => {
@@ -673,7 +703,12 @@ export default function WeddingTracker() {
           Guest <span style={{ color: "#c4917b" }}>✦</span> List
         </h1>
         <div style={{ fontSize: 11, color: "#b8a992", marginTop: 3 }}>
-          Wedding · Engagement · Moga · Path
+          Wedding · Engagement · Lapaza · Path
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <a href="/budget" style={{ fontSize: 12, color: "#c4917b", fontWeight: 600, textDecoration: "none", border: "1px solid #c4917b", padding: "4px 10px", borderRadius: 12 }}>
+            Manage Budget →
+          </a>
         </div>
         <div
           style={{
@@ -822,8 +857,8 @@ export default function WeddingTracker() {
                   Grand Total
                 </div>
                 <Donut
-                  value={totalAdults}
-                  total={totalPeople}
+                  value={totalPeople}
+                  total={Math.max(totalPeople, 1)}
                   size={120}
                   strokeW={13}
                   colors={{
@@ -833,19 +868,39 @@ export default function WeddingTracker() {
                   }}
                   centerLabel="people"
                 />
-                <div style={{ display: "flex", gap: 12, fontSize: 11 }}>
-                  <span>Adults {totalAdults}</span>
-                  <span>Children {totalChildren}</span>
+                <div style={{ display: "flex", gap: 10, fontSize: 12, flexWrap: "wrap", justifyContent: "center" }}>
+                  <span
+                    style={{
+                      background: "#f0ebe4",
+                      borderRadius: 8,
+                      padding: "4px 10px",
+                      color: "#6b5e50",
+                      fontWeight: 600,
+                    }}
+                  >
+                    👤 {totalAdults} Adults
+                  </span>
+                  <span
+                    style={{
+                      background: "#f0ebe4",
+                      borderRadius: 8,
+                      padding: "4px 10px",
+                      color: "#6b5e50",
+                      fontWeight: 600,
+                    }}
+                  >
+                    👶 {totalChildren} Kids
+                  </span>
                 </div>
                 <div
                   style={{
-                    fontSize: 26,
-                    fontWeight: 700,
-                    color: "#3d3428",
-                    fontFamily: "'Playfair Display', serif",
+                    fontSize: 11,
+                    color: "#a09585",
+                    fontWeight: 500,
+                    marginTop: 2,
                   }}
                 >
-                  {totalPeople}
+                  {allGuests.length} {allGuests.length === 1 ? "guest" : "guests"} total
                 </div>
               </div>
 
@@ -1014,6 +1069,24 @@ export default function WeddingTracker() {
                       </div>
                     ))}
                   </div>
+
+                  <div
+                    style={{
+                      marginTop: 12,
+                      background: "linear-gradient(135deg, #f8f5f0, #f0ebe4)",
+                      borderRadius: 10,
+                      padding: "10px 16px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      border: "1px solid #e8e0d4",
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>💡</span>
+                    <span style={{ fontSize: 12, color: "#6b5e50", lineHeight: 1.5 }}>
+                      <strong>How to add guests:</strong> Click <strong>+ Add Guest</strong>, enter the guest name, and then <strong>tick the events</strong> (Wedding, Engagement, Lapaza, Path) where you want to invite them.
+                    </span>
+                  </div>
                 </div>
 
                 <div
@@ -1101,10 +1174,25 @@ export default function WeddingTracker() {
                                     {isEd ? (
                                       <input
                                         autoFocus
-                                        style={{ ...inp, minWidth: 140, width: "100%" }}
+                                        style={{
+                                          ...inp,
+                                          minWidth: 140,
+                                          width: "100%",
+                                          ...(unsavedGuests.has(g.id) ? { borderColor: "#c4917b", background: "#fef9f5" } : {}),
+                                        }}
                                         value={g.name}
-                                        placeholder="Guest name"
+                                        placeholder="Enter guest name (required)"
                                         onChange={(e) => updGuest(activeMember.id, g.id, "name", e.target.value)}
+                                        onBlur={() => {
+                                          if (unsavedGuests.has(g.id)) {
+                                            commitGuest(activeMember.id, g.id);
+                                          }
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter" && unsavedGuests.has(g.id)) {
+                                            commitGuest(activeMember.id, g.id);
+                                          }
+                                        }}
                                       />
                                     ) : (
                                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
