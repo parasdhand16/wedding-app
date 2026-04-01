@@ -4,17 +4,6 @@ import React, { useState, useEffect } from "react";
 import { getSupabase } from "../lib/supabase";
 import Link from "next/link";
 
-const CATEGORIES = ["Venue", "Catering", "Photography", "Attire", "Decor", "Other"];
-
-const CATEGORY_COLORS = {
-  Venue: "#6b8f71",
-  Catering: "#c4917b",
-  Photography: "#8b7355",
-  Attire: "#7b8fa6",
-  Decor: "#9e8b7c",
-  Other: "#a09585",
-};
-
 function copyToClipboard(text) {
   navigator.clipboard.writeText(text);
   alert("SQL snippet copied to clipboard! Run this in the Supabase SQL Editor.");
@@ -22,14 +11,15 @@ function copyToClipboard(text) {
 
 export default function BudgetTracker() {
   const [items, setItems] = useState([]);
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(null);
   
+  const [newEventName, setNewEventName] = useState("");
   const [newItemParams, setNewItemParams] = useState({
     name: "",
-    category: "Venue",
-    estimated_cost: "",
-    actual_cost: "",
+    event_name: "",
+    amount: "",
     paid: false,
   });
 
@@ -38,35 +28,82 @@ export default function BudgetTracker() {
 
   useEffect(() => {
     async function loadData() {
-      const { data, error } = await getSupabase()
-        .from("budget_items")
+      // Load events
+      const { data: eventData, error: eventError } = await getSupabase()
+        .from("budget_events")
         .select("*")
         .order("created_at", { ascending: true });
 
-      if (error) {
-        if (error.code === "42P01") {
-          setDbError("Table 'budget_items' does not exist.");
+      if (eventError) {
+        if (eventError.code === "42P01") {
+          setDbError("Tables do not exist. Please run the SQL snippet.");
         } else {
-          setDbError(error.message);
+          setDbError(eventError.message);
         }
         setLoading(false);
         return;
       }
 
-      setItems(data || []);
+      setEvents(eventData || []);
+      
+      if (eventData && eventData.length > 0) {
+        setNewItemParams(prev => ({ ...prev, event_name: eventData[0].name }));
+      }
+
+      // Load items
+      const { data: itemData, error: itemError } = await getSupabase()
+        .from("budget_items")
+        .select("*")
+        .order("created_at", { ascending: true });
+        
+      if (!itemError) {
+        setItems(itemData || []);
+      }
       setLoading(false);
     }
     loadData();
   }, []);
 
+  const addEvent = async (e) => {
+    e.preventDefault();
+    if (!newEventName.trim()) return;
+    
+    // Check if event already exists
+    if (events.find(ev => ev.name.toLowerCase() === newEventName.trim().toLowerCase())) {
+        alert("Event already exists!");
+        return;
+    }
+
+    const { data, error } = await getSupabase()
+      .from("budget_events")
+      .insert([{ name: newEventName.trim() }])
+      .select();
+
+    if (error) {
+      alert("Error adding event: " + error.message);
+      return;
+    }
+
+    if (data && data[0]) {
+      const updatedEvents = [...events, data[0]];
+      setEvents(updatedEvents);
+      setNewEventName("");
+      if (!newItemParams.event_name) {
+        setNewItemParams(prev => ({ ...prev, event_name: data[0].name }));
+      }
+    }
+  };
+
   const addItem = async (e) => {
     e.preventDefault();
-    if (!newItemParams.name) return;
+    if (!newItemParams.name || !newItemParams.event_name) {
+      alert("Please enter a name and select an event. (You may need to add an event first!)");
+      return;
+    }
 
     const payload = {
       ...newItemParams,
-      estimated_cost: parseFloat(newItemParams.estimated_cost) || 0,
-      actual_cost: parseFloat(newItemParams.actual_cost) || 0,
+      amount: parseFloat(newItemParams.amount) || 0,
     };
 
     const { data, error } = await getSupabase()
@@ -83,9 +120,8 @@ export default function BudgetTracker() {
       setItems([...items, data[0]]);
       setNewItemParams({
         name: "",
-        category: "Venue",
-        estimated_cost: "",
-        actual_cost: "",
+        event_name: newItemParams.event_name, // keep last selected
+        amount: "",
         paid: false,
       });
     }
@@ -100,17 +136,35 @@ export default function BudgetTracker() {
     }
   };
 
+  const deleteEvent = async (name) => {
+    if(!confirm(`Are you sure you want to delete the event '${name}'? All expenses tied to it will also be deleted!`)) return;
+    const { error } = await getSupabase().from("budget_events").delete().eq("name", name);
+    if (!error) {
+      setEvents(events.filter(ev => ev.name !== name));
+      setItems(items.filter(it => it.event_name !== name));
+      if (newItemParams.event_name === name) {
+        setNewItemParams({ ...newItemParams, event_name: "" });
+      }
+    } else {
+      alert("Error deleting event: " + error.message);
+    }
+  };
+
   const startEditing = (item) => {
     setEditingId(item.id);
     setEditingParams({ ...item });
   };
 
   const saveEdit = async () => {
+    if (!editingParams.name || !editingParams.event_name) {
+      alert("Name and Event are required.");
+      return;
+    }
+
     const payload = {
       name: editingParams.name,
-      category: editingParams.category,
-      estimated_cost: parseFloat(editingParams.estimated_cost) || 0,
-      actual_cost: parseFloat(editingParams.actual_cost) || 0,
+      event_name: editingParams.event_name,
+      amount: parseFloat(editingParams.amount) || 0,
       paid: editingParams.paid,
     };
 
@@ -141,7 +195,7 @@ export default function BudgetTracker() {
   };
 
   const formatCurrency = (val) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val || 0);
   };
 
   if (loading) {
@@ -152,17 +206,32 @@ export default function BudgetTracker() {
     );
   }
 
-  const totalEstimated = items.reduce((sum, item) => sum + (item.estimated_cost || 0), 0);
-  const totalActual = items.reduce((sum, item) => sum + (item.actual_cost || 0), 0);
-  const totalPaid = items.reduce((sum, item) => sum + (item.paid ? (item.actual_cost || item.estimated_cost || 0) : 0), 0);
+  const grandTotal = items.reduce((sum, item) => sum + (item.amount || 0), 0);
+  const grandPaid = items.reduce((sum, item) => sum + (item.paid ? (item.amount || 0) : 0), 0);
+
+  // Calculate totals per event
+  const eventsTotals = events.map(ev => {
+    const eventItems = items.filter(it => it.event_name === ev.name);
+    const total = eventItems.reduce((sum, it) => sum + (it.amount || 0), 0);
+    const paid = eventItems.reduce((sum, it) => sum + (it.paid ? (it.amount || 0) : 0), 0);
+    return { name: ev.name, total, paid };
+  });
 
   const sqlSnippet = `
+DROP TABLE IF EXISTS budget_items;
+DROP TABLE IF EXISTS budget_events;
+
+CREATE TABLE budget_events (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  name text UNIQUE NOT NULL,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
 CREATE TABLE budget_items (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  category text NOT NULL,
+  event_name text NOT NULL REFERENCES budget_events(name) ON DELETE CASCADE ON UPDATE CASCADE,
   name text NOT NULL,
-  estimated_cost numeric DEFAULT 0,
-  actual_cost numeric DEFAULT 0,
+  amount numeric DEFAULT 0,
   paid boolean DEFAULT false,
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -201,133 +270,162 @@ CREATE TABLE budget_items (
 
       {!dbError && (
         <div style={{ maxWidth: 960, margin: "0 auto" }}>
-          {/* Summary Dashboard */}
+          
+          {/* Main Grand Total Dashboard */}
           <div style={{ display: "flex", gap: 14, marginBottom: 20, flexWrap: "wrap", justifyContent: "center" }}>
             <div style={{ background: "#fff", borderRadius: 14, padding: "16px 20px", minWidth: 200, flex: 1, boxShadow: "0 2px 14px rgba(139,115,85,0.07)", borderTop: "3px solid #6b8f71" }}>
-              <div style={{ fontSize: 11, color: "#a09585", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 4 }}>Estimated Budget</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: "#3d3428" }}>{formatCurrency(totalEstimated)}</div>
-            </div>
-            <div style={{ background: "#fff", borderRadius: 14, padding: "16px 20px", minWidth: 200, flex: 1, boxShadow: "0 2px 14px rgba(139,115,85,0.07)", borderTop: "3px solid #c4917b" }}>
-              <div style={{ fontSize: 11, color: "#a09585", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 4 }}>Actual Cost</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: "#3d3428" }}>{formatCurrency(totalActual)}</div>
+              <div style={{ fontSize: 11, color: "#a09585", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 4 }}>Grand Total Spend</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: "#3d3428" }}>{formatCurrency(grandTotal)}</div>
             </div>
             <div style={{ background: "#fff", borderRadius: 14, padding: "16px 20px", minWidth: 200, flex: 1, boxShadow: "0 2px 14px rgba(139,115,85,0.07)", borderTop: "3px solid #8b7355" }}>
-              <div style={{ fontSize: 11, color: "#a09585", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 4 }}>Total Paid</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: "#3d3428" }}>{formatCurrency(totalPaid)}</div>
+              <div style={{ fontSize: 11, color: "#a09585", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 4 }}>Grand Total Paid</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: "#3d3428" }}>{formatCurrency(grandPaid)}</div>
             </div>
           </div>
 
-          {/* Form to add item */}
-          <form onSubmit={addItem} style={{ background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 2px 14px rgba(139,115,85,0.07)", marginBottom: 20 }}>
-            <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: "#3d3428", fontFamily: "'Playfair Display', serif" }}>Add Expense</h3>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <input
-                type="text"
-                placeholder="Item Name (e.g. DJ)"
-                value={newItemParams.name}
-                onChange={(e) => setNewItemParams({ ...newItemParams, name: e.target.value })}
-                style={{ flex: "1 1 200px", padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14 }}
-                required
-              />
-              <select
-                value={newItemParams.category}
-                onChange={(e) => setNewItemParams({ ...newItemParams, category: e.target.value })}
-                style={{ flex: "0 1 150px", padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14, background: "#fff" }}
-              >
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <input
-                type="number"
-                placeholder="Est. Cost"
-                value={newItemParams.estimated_cost}
-                onChange={(e) => setNewItemParams({ ...newItemParams, estimated_cost: e.target.value })}
-                style={{ flex: "0 1 120px", padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14 }}
-              />
-              <input
-                type="number"
-                placeholder="Actual Cost"
-                value={newItemParams.actual_cost}
-                onChange={(e) => setNewItemParams({ ...newItemParams, actual_cost: e.target.value })}
-                style={{ flex: "0 1 120px", padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14 }}
-              />
-              <button
-                type="submit"
-                style={{ background: "#3d3428", color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 600, cursor: "pointer", transition: "0.2s" }}
-              >
-                Add
-              </button>
-            </div>
-          </form>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "flex-start" }}>
+            
+            <div style={{ flex: "1 1 300px", display: "flex", flexDirection: "column", gap: 20 }}>
+              {/* Event Setup Form */}
+              <div style={{ background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 2px 14px rgba(139,115,85,0.07)" }}>
+                <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: "#3d3428", fontFamily: "'Playfair Display', serif" }}>Events Management</h3>
+                <form onSubmit={addEvent} style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+                  <input
+                    type="text"
+                    placeholder="New Event (e.g. Sangeet)"
+                    value={newEventName}
+                    onChange={(e) => setNewEventName(e.target.value)}
+                    style={{ flex: 1, padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14 }}
+                  />
+                  <button type="submit" style={{ background: "#c4917b", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600, cursor: "pointer" }}>
+                    Add
+                  </button>
+                </form>
+                
+                {events.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {eventsTotals.map((ev) => (
+                      <div key={ev.name} style={{ background: "#faf7f2", borderRadius: 8, padding: "10px 14px", border: "1px solid #efeae0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <div style={{ fontWeight: 600, color: "#3d3428", fontSize: 14 }}>{ev.name}</div>
+                          <div style={{ fontSize: 12, color: "#8a7d6b", marginTop: 2 }}>
+                            Total: <strong>{formatCurrency(ev.total)}</strong> <span style={{opacity: 0.5}}>|</span> Paid: <strong style={{color: "#6b8f71"}}>{formatCurrency(ev.paid)}</strong>
+                          </div>
+                        </div>
+                        <button onClick={() => deleteEvent(ev.name)} style={{ background: "transparent", border: "none", color: "#c4a97d", cursor: "pointer", fontSize: 12 }}>🗑</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {events.length === 0 && <div style={{ fontSize: 13, color: "#a09585" }}>No events added yet!</div>}
+              </div>
 
-          {/* Items List */}
-          <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 2px 14px rgba(139,115,85,0.07)", overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, textAlign: "left" }}>
-              <thead style={{ background: "#faf7f2", borderBottom: "1px solid #f0ebe4" }}>
-                <tr>
-                  <th style={{ padding: "14px 20px", color: "#8a7d6b", fontWeight: 600 }}>Item</th>
-                  <th style={{ padding: "14px 20px", color: "#8a7d6b", fontWeight: 600 }}>Category</th>
-                  <th style={{ padding: "14px 20px", color: "#8a7d6b", fontWeight: 600 }}>Est. Cost</th>
-                  <th style={{ padding: "14px 20px", color: "#8a7d6b", fontWeight: 600 }}>Actual</th>
-                  <th style={{ padding: "14px 20px", color: "#8a7d6b", fontWeight: 600, textAlign: "center" }}>Paid</th>
-                  <th style={{ padding: "14px 20px" }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.length === 0 ? (
-                  <tr><td colSpan={6} style={{ padding: "30px", textAlign: "center", color: "#b8a992" }}>No items yet. Add one above!</td></tr>
-                ) : items.map((item) => (
-                  <tr key={item.id} style={{ borderBottom: "1px solid #f0ebe4" }}>
-                    {editingId === item.id ? (
-                      <>
-                        <td style={{ padding: "10px 20px" }}>
-                          <input type="text" value={editingParams.name} onChange={e => setEditingParams({...editingParams, name: e.target.value})} style={{ width: "100%", padding: "6px", border: "1px solid #e0d9ce", borderRadius: 4 }} />
-                        </td>
-                        <td style={{ padding: "10px 20px" }}>
-                          <select value={editingParams.category} onChange={e => setEditingParams({...editingParams, category: e.target.value})} style={{ width: "100%", padding: "6px", border: "1px solid #e0d9ce", borderRadius: 4 }}>
-                            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                        </td>
-                        <td style={{ padding: "10px 20px" }}>
-                          <input type="number" value={editingParams.estimated_cost} onChange={e => setEditingParams({...editingParams, estimated_cost: e.target.value})} style={{ width: "80px", padding: "6px", border: "1px solid #e0d9ce", borderRadius: 4 }} />
-                        </td>
-                        <td style={{ padding: "10px 20px" }}>
-                          <input type="number" value={editingParams.actual_cost} onChange={e => setEditingParams({...editingParams, actual_cost: e.target.value})} style={{ width: "80px", padding: "6px", border: "1px solid #e0d9ce", borderRadius: 4 }} />
-                        </td>
-                        <td style={{ padding: "10px 20px", textAlign: "center" }}>
-                          <input type="checkbox" checked={editingParams.paid} onChange={e => setEditingParams({...editingParams, paid: e.target.checked})} />
-                        </td>
-                        <td style={{ padding: "10px 20px", textAlign: "right" }}>
-                          <button onClick={saveEdit} style={{ background: "#6b8f71", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", marginRight: 6 }}>Save</button>
-                          <button onClick={() => setEditingId(null)} style={{ background: "#eee", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer" }}>Cancel</button>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td style={{ padding: "16px 20px", fontWeight: 500, color: "#3d3428" }}>{item.name}</td>
-                        <td style={{ padding: "16px 20px" }}>
-                          <span style={{ 
-                            background: CATEGORY_COLORS[item.category] ? CATEGORY_COLORS[item.category] + "20" : "#eee", 
-                            color: CATEGORY_COLORS[item.category] || "#666", 
-                            padding: "4px 8px", borderRadius: 12, fontSize: 11, fontWeight: 600, textTransform: "uppercase" 
-                          }}>
-                            {item.category}
-                          </span>
-                        </td>
-                        <td style={{ padding: "16px 20px", color: "#8a7d6b" }}>{formatCurrency(item.estimated_cost)}</td>
-                        <td style={{ padding: "16px 20px", color: "#8a7d6b" }}>{formatCurrency(item.actual_cost)}</td>
-                        <td style={{ padding: "16px 20px", textAlign: "center" }}>
-                          <input type="checkbox" checked={item.paid} onChange={() => togglePaid(item)} style={{ cursor: "pointer", width: 16, height: 16, accentColor: "#6b8f71" }} />
-                        </td>
-                        <td style={{ padding: "16px 20px", textAlign: "right" }}>
-                          <button onClick={() => startEditing(item)} style={{ background: "transparent", border: "none", color: "#a09585", cursor: "pointer", marginRight: 8 }}>✎</button>
-                          <button onClick={() => deleteItem(item.id)} style={{ background: "transparent", border: "none", color: "#c4917b", cursor: "pointer" }}>🗑</button>
-                        </td>
-                      </>
-                    )}
+              {/* Add Expense Form */}
+              <div style={{ background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 2px 14px rgba(139,115,85,0.07)" }}>
+                <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: "#3d3428", fontFamily: "'Playfair Display', serif" }}>Add Expense</h3>
+                <form onSubmit={addItem} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <input
+                    type="text"
+                    placeholder="Expense Name (e.g. Venue Booking)"
+                    value={newItemParams.name}
+                    onChange={(e) => setNewItemParams({ ...newItemParams, name: e.target.value })}
+                    style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14 }}
+                    required
+                  />
+                  <select
+                    value={newItemParams.event_name}
+                    onChange={(e) => setNewItemParams({ ...newItemParams, event_name: e.target.value })}
+                    style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14, background: "#fff" }}
+                    required
+                  >
+                    <option value="" disabled>Select Event...</option>
+                    {events.map(ev => <option key={ev.name} value={ev.name}>{ev.name}</option>)}
+                  </select>
+                  <input
+                    type="number"
+                    placeholder="Amount (₹)"
+                    value={newItemParams.amount}
+                    onChange={(e) => setNewItemParams({ ...newItemParams, amount: e.target.value })}
+                    style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #e0d9ce", fontSize: 14 }}
+                    required
+                  />
+                  <button
+                    type="submit"
+                    style={{ background: "#3d3428", color: "#fff", border: "none", borderRadius: 8, padding: "12px", fontWeight: 600, cursor: "pointer", marginTop: 4 }}
+                    disabled={events.length === 0}
+                  >
+                    Add Expense
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            {/* Expenses List */}
+            <div style={{ flex: "2 1 400px", background: "#fff", borderRadius: 14, boxShadow: "0 2px 14px rgba(139,115,85,0.07)", overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, textAlign: "left" }}>
+                <thead style={{ background: "#faf7f2", borderBottom: "1px solid #f0ebe4" }}>
+                  <tr>
+                    <th style={{ padding: "14px 16px", color: "#8a7d6b", fontWeight: 600 }}>Expense</th>
+                    <th style={{ padding: "14px 16px", color: "#8a7d6b", fontWeight: 600 }}>Event</th>
+                    <th style={{ padding: "14px 16px", color: "#8a7d6b", fontWeight: 600 }}>Amount</th>
+                    <th style={{ padding: "14px 16px", color: "#8a7d6b", fontWeight: 600, textAlign: "center" }}>Paid</th>
+                    <th style={{ padding: "14px 16px" }}></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {items.length === 0 ? (
+                    <tr><td colSpan={5} style={{ padding: "30px", textAlign: "center", color: "#b8a992" }}>No expenses yet. Add one!</td></tr>
+                  ) : items.map((item) => (
+                    <tr key={item.id} style={{ borderBottom: "1px solid #f0ebe4" }}>
+                      {editingId === item.id ? (
+                        <>
+                          <td style={{ padding: "10px 16px" }}>
+                            <input type="text" value={editingParams.name} onChange={e => setEditingParams({...editingParams, name: e.target.value})} style={{ width: "100%", padding: "6px", border: "1px solid #e0d9ce", borderRadius: 4 }} />
+                          </td>
+                          <td style={{ padding: "10px 16px" }}>
+                            <select value={editingParams.event_name} onChange={e => setEditingParams({...editingParams, event_name: e.target.value})} style={{ width: "100%", padding: "6px", border: "1px solid #e0d9ce", borderRadius: 4 }}>
+                              {events.map(ev => <option key={ev.name} value={ev.name}>{ev.name}</option>)}
+                            </select>
+                          </td>
+                          <td style={{ padding: "10px 16px" }}>
+                            <input type="number" value={editingParams.amount} onChange={e => setEditingParams({...editingParams, amount: e.target.value})} style={{ width: "80px", padding: "6px", border: "1px solid #e0d9ce", borderRadius: 4 }} />
+                          </td>
+                          <td style={{ padding: "10px 16px", textAlign: "center" }}>
+                            <input type="checkbox" checked={editingParams.paid} onChange={e => setEditingParams({...editingParams, paid: e.target.checked})} />
+                          </td>
+                          <td style={{ padding: "10px 16px", textAlign: "right" }}>
+                            <button onClick={saveEdit} style={{ background: "#6b8f71", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", marginRight: 6 }}>Save</button>
+                            <button onClick={() => setEditingId(null)} style={{ background: "#eee", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer" }}>Cancel</button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td style={{ padding: "16px", fontWeight: 500, color: "#3d3428" }}>{item.name}</td>
+                          <td style={{ padding: "16px" }}>
+                            <span style={{ 
+                              background: "#f0ebe4", 
+                              color: "#6b5e50", 
+                              padding: "4px 8px", borderRadius: 6, fontSize: 12, fontWeight: 600
+                            }}>
+                              {item.event_name}
+                            </span>
+                          </td>
+                          <td style={{ padding: "16px", color: "#8a7d6b", fontWeight: 600 }}>{formatCurrency(item.amount)}</td>
+                          <td style={{ padding: "16px", textAlign: "center" }}>
+                            <input type="checkbox" checked={item.paid} onChange={() => togglePaid(item)} style={{ cursor: "pointer", width: 16, height: 16, accentColor: "#6b8f71" }} />
+                          </td>
+                          <td style={{ padding: "16px", textAlign: "right" }}>
+                            <button onClick={() => startEditing(item)} style={{ background: "transparent", border: "none", color: "#a09585", cursor: "pointer", marginRight: 8, fontSize: 14 }}>✎</button>
+                            <button onClick={() => deleteItem(item.id)} style={{ background: "transparent", border: "none", color: "#c4917b", cursor: "pointer", fontSize: 14 }}>🗑</button>
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
           </div>
         </div>
       )}
